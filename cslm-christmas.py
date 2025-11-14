@@ -70,17 +70,6 @@ def loop():
     mcp.output(3,1)     # turn on LCD backlight
     lcd.begin(20,4)     # set number of LCD lines and columns
 
-    def write_row(row, text):
-        """Write a single 20-char row without clearing the display.
-        Pads or truncates text to exactly 20 chars so previous content is overwritten."""
-        try:
-            s = str(text)[:20].ljust(20)
-            lcd.setCursor(0, row)
-            lcd.message(s)
-        except Exception:
-            # If LCD fails, ignore and continue
-            pass
-
     # draw static header once
     write_row(0, 'HAPPY CSLM CHRISTMAS')
 
@@ -88,10 +77,12 @@ def loop():
     prev_line1 = prev_line2 = prev_line3 = None
     while True:
         days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
-        # Prepare the text for each row
+        # Prepare the text for each row. Use minute granularity to avoid per-second updates.
         line1 = f"{days} days {hours}h"
-        line2 = f"{minutes}m {seconds}s to xmas"
-        line3 = get_time_now()
+        line2 = f"{minutes}m to xmas"
+        # show time as HH:MM (no seconds) to reduce updates
+        now = datetime.now()
+        line3 = now.strftime('    %H:%M')
 
         # Only update rows that changed
         if line1 != prev_line1:
@@ -108,6 +99,18 @@ def loop():
  
 def destroy():
     lcd.clear()
+
+
+def write_row(row, text):
+    """Write a single 20-char row without clearing the display.
+    Pads or truncates text to exactly 20 chars so previous content is overwritten."""
+    try:
+        s = str(text)[:20].ljust(20)
+        lcd.setCursor(0, row)
+        lcd.message(s)
+    except Exception:
+        # If LCD fails, ignore and continue
+        pass
 
 
 def _format_to_4_lines(text, width=20):
@@ -170,20 +173,25 @@ def show_countdown_for(duration_seconds):
         except Exception:
             pass
 
+        # Only update rows that changed while counting down to avoid excessive writes
+        prev1 = prev2 = prev3 = None
         for i in range(end):
             days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
+            line1 = f"{days} days {hours}h"
+            line2 = f"{minutes}m to xmas"
+            now = datetime.now()
+            line3 = now.strftime('    %H:%M')
             try:
-                lcd.clear()
-                lcd.setCursor(0,0)
-                lcd.message('HAPPY CSLM CHRISTMAS')
-                lcd.setCursor(0,1)
-                lcd.message(("{} days, {} hours".format(days, hours)))
-                lcd.setCursor(0,2)
-                lcd.message(("{} minutes and".format(minutes)))
-                lcd.setCursor(0,3)
-                lcd.message(("{} seconds to xmas".format(seconds)))
+                if line1 != prev1:
+                    write_row(1, line1)
+                    prev1 = line1
+                if line2 != prev2:
+                    write_row(2, line2)
+                    prev2 = line2
+                if line3 != prev3:
+                    write_row(3, line3)
+                    prev3 = line3
             except Exception:
-                # If LCD fails, just print to console
                 print('Countdown:', days, hours, minutes, seconds)
             sleep(1)
     except Exception as e:
