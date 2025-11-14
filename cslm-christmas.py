@@ -69,18 +69,16 @@ def calculate_time_to_christmas():
 def loop():
     mcp.output(3,1)     # turn on LCD backlight
     lcd.begin(20,4)     # set number of LCD lines and columns
-
     # draw static header once
-   
+    write_row(0, 'HAPPY CSLM CHRISTMAS')
 
     # track previous values so we only write changed rows
     prev_line1 = prev_line2 = prev_line3 = None
     while True:
-        write_row(0, 'HAPPY CSLM CHRISTMAS')
         days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
         # Prepare the text for each row. Use minute granularity to avoid per-second updates.
-        line1 = f"{days} days {hours}h"
-        line2 = f"{minutes}m to xmas"
+        line1 = f"{days} days {hours} hours"
+        line2 = f"{minutes} minutes to xmas"
         # show time as HH:MM (no seconds) to reduce updates
         now = datetime.now()
         line3 = now.strftime('    %H:%M')
@@ -156,6 +154,11 @@ def _display_on_lcd_multiline(text, hold_seconds=6):
             lcd.message(line)
         # keep the message visible for a short while
         sleep(hold_seconds)
+        # restore the static header after the message is shown
+        try:
+            write_row(0, 'HAPPY CSLM CHRISTMAS')
+        except Exception:
+            pass
     except Exception as e:
         print('LCD display error:', e)
 
@@ -171,6 +174,12 @@ def show_countdown_for(duration_seconds):
         try:
             mcp.output(3,1)
             lcd.begin(20,4)
+        except Exception:
+            pass
+
+        # draw static header for countdown
+        try:
+            write_row(0, 'HAPPY CSLM CHRISTMAS')
         except Exception:
             pass
 
