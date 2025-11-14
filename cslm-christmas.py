@@ -241,57 +241,61 @@ def poll_sqs_and_display(queue_url, wait_time=10):
                 VisibilityTimeout=60,
                 MessageAttributeNames=['All']
             )
+
+            messages = resp.get('Messages') or []
+            if not messages:
+                # no messages — show countdown for 15 seconds then poll again
+                show_countdown_for(15)
+                continue
+
+            for msg in messages:
+                body = msg.get('Body', '')
+                display_text = None
+                # body may itself be JSON; try to extract sensible text
+                try:
+                    parsed = json.loads(body)
+                    # If SQS message contains SNS envelope or stringified message, try common fields
+                    if isinstance(parsed, dict):
+                        # Common SNS -> message key
+                        if 'Message' in parsed and isinstance(parsed['Message'], str):
+                            # Message may itself be JSON
+                            try:
+                                inner = json.loads(parsed['Message'])
+                                if isinstance(inner, dict) and 'message' in inner:
+                                    display_text = inner['message']
+                                else:
+                                    display_text = parsed['Message']
+                            except Exception:
+                                display_text = parsed['Message']
+                        elif 'message' in parsed:
+                            display_text = parsed['message']
+                        else:
+                            # fallback to the stringified dict
+                            display_text = json.dumps(parsed)
+                    else:
+                        display_text = str(parsed)
+                except Exception:
+                    display_text = str(body)
+
+                # Show on LCD for 60 seconds
+                print('Displaying message:', display_text)
+                _display_on_lcd_multiline(display_text, hold_seconds=60)
+
+                # Delete message from queue
+                receipt = msg.get('ReceiptHandle')
+                if receipt:
+                    try:
+                        sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt)
+                    except Exception as e:
+                        print('Failed to delete message:', e)
         except (BotoCoreError, ClientError) as e:
             print('SQS receive error:', e)
             sleep(5)
             continue
-
-        messages = resp.get('Messages') or []
-        if not messages:
-            # no messages — show countdown for 15 seconds then poll again
-            show_countdown_for(15)
-            continue
-
-        for msg in messages:
-            body = msg.get('Body', '')
-            display_text = None
-            # body may itself be JSON; try to extract sensible text
-            try:
-                parsed = json.loads(body)
-                # If SQS message contains SNS envelope or stringified message, try common fields
-                if isinstance(parsed, dict):
-                    # Common SNS -> message key
-                    if 'Message' in parsed and isinstance(parsed['Message'], str):
-                        # Message may itself be JSON
-                        try:
-                            inner = json.loads(parsed['Message'])
-                            if isinstance(inner, dict) and 'message' in inner:
-                                display_text = inner['message']
-                            else:
-                                display_text = parsed['Message']
-                        except Exception:
-                            display_text = parsed['Message']
-                    elif 'message' in parsed:
-                        display_text = parsed['message']
-                    else:
-                        # fallback to the stringified dict
-                        display_text = json.dumps(parsed)
-                else:
-                    display_text = str(parsed)
-            except Exception:
-                display_text = str(body)
-
-            # Show on LCD for 60 seconds
-            print('Displaying message:', display_text)
-            _display_on_lcd_multiline(display_text, hold_seconds=60)
-
-            # Delete message from queue
-            receipt = msg.get('ReceiptHandle')
-            if receipt:
-                try:
-                    sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt)
-                except Exception as e:
-                    print('Failed to delete message:', e)
+        except Exception as e:
+            # Unexpected error — log and return to allow main to fall back to loop()
+            print('Unexpected error in SQS poller:', e)
+            return
     
 PCF8574_address = 0x27  # I2C address of the PCF8574 chip.
 PCF8574A_address = 0x3F  # I2C address of the PCF8574A chip.
@@ -308,26 +312,44 @@ except:
 lcd = Adafruit_CharLCD(pin_rs=0, pin_e=2, pins_db=[4,5,6,7], GPIO=mcp)
 
 if __name__ == '__main__':
-    print ('Program is starting ... ')
-    # If boto3 is available and the user passed 'sq', 'sqs' or 'poll' as an argument, poll SQS
-    if len(sys.argv) > 1 and sys.argv[1].lower().startswith(('sq','sqs','poll')):
-        if boto3 is None:
-            print('boto3 is not installed; install it to use SQS polling: pip install boto3')
-            sys.exit(1)
+    try:
+        print('Program is starting ... ')
+        # If boto3 is available and the user passed 'sq', 'sqs' or 'poll' as an argument, poll SQS
+        if len(sys.argv) > 1 and sys.argv[1].lower().startswith(('sq','sqs','poll')):
+            if boto3 is None:
+                print('boto3 is not installed; install it to use SQS polling: pip install boto3')
+                sys.exit(1)
 
-        # allow optional queue URL as second argument, otherwise use the default from the request
-        queue_url = None
-        if len(sys.argv) > 2:
-            queue_url = sys.argv[2]
+            # allow optional queue URL as second argument, otherwise use the default from the request
+            queue_url = sys.argv[2] if len(sys.argv) > 2 else 'https://sqs.eu-west-2.amazonaws.com/567919078991/xmasjumper'
+
+            try:
+                poll_sqs_and_display(queue_url)
+                # if poller returns (unexpectedly), fall back to loop()
+                print('SQS poller exited; falling back to local loop()')
+                try:
+                    loop()
+                except KeyboardInterrupt:
+                    destroy()
+            except KeyboardInterrupt:
+                destroy()
+            except Exception as e:
+                print('Error starting poller:', e)
+                print('Falling back to loop()')
+                try:
+                    loop()
+                except KeyboardInterrupt:
+                    destroy()
         else:
-            queue_url = 'https://sqs.eu-west-2.amazonaws.com/567919078991/xmasjumper'
-
-        try:
-            poll_sqs_and_display(queue_url)
-            sleep(5)
-        except KeyboardInterrupt:
-            destroy()
-    else:
+            try:
+                loop()
+            except KeyboardInterrupt:
+                destroy()
+    except KeyboardInterrupt:
+        destroy()
+    except Exception as e:
+        # On any unexpected error, print and fall back to the loop display
+        print('Unhandled exception at top level:', e)
         try:
             loop()
         except KeyboardInterrupt:
