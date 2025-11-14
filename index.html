@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Send the Christmas Jumper a message</title>
+    <style>
+        :root{--bg1:#07112a;--bg2:#0b2a17;--card:#fffef2;--muted:#6b7280;--accent:#e11d48;--accent2:#16a34a}
+        html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg1) 0%, #08324a 40%, var(--bg2) 100%);font-family:system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;color:#fafafa}
+        /* falling snow using repeating-radial-gradient animated background-position */
+        body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background-image:radial-gradient(#ffffff55 1px, transparent 1px);background-size:12px 12px;opacity:0.9;animation:fall 12s linear infinite}
+        @keyframes fall{from{background-position:0 -1000px}to{background-position:0 0}}
+
+        .container{max-width:760px;margin:22px auto;padding:18px;position:relative;z-index:2}
+        #postForm{background:linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,251,240,0.95));padding:20px;border-radius:14px;box-shadow:0 10px 30px rgba(2,6,23,0.5);border:2px solid rgba(255,255,255,0.06);color:#0b1220}
+        header.xmas{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+        .logo{font-size:1.25rem;font-weight:700}
+        .logo .star{color:#facc15;margin-right:6px}
+        h2{margin:0 0 6px 0;font-size:1.125rem;color:#0b1220}
+        p{color:#213244;margin:0 0 12px 0;font-size:0.95rem;line-height:1.4}
+
+        /* Inputs */
+        .field{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+        label{font-size:0.95rem;color:#0b1220}
+        textarea{width:100%;min-height:160px;padding:14px;border-radius:10px;border:1px solid rgba(11,17,32,0.06);resize:vertical;font-size:1rem;background:linear-gradient(180deg,#fff,#fffbf5);box-sizing:border-box}
+        .example{font-size:0.85rem;color:#374151;background:linear-gradient(180deg,#fffbf5,#fff);padding:8px;border-radius:8px;border:1px dashed rgba(11,17,32,0.03)}
+
+        /* Buttons (red/green Christmas colors) */
+        .actions{display:flex;gap:10px;align-items:center}
+        .btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 16px;border-radius:10px;border:none;background:var(--accent);color:white;font-weight:700;cursor:pointer}
+        .btn.full{flex:1}
+        .btn.ghost{background:var(--accent2);border:2px solid rgba(0,0,0,0.06);color:white}
+
+        /* Message area */
+        #message{margin-top:14px;padding:12px;border-radius:8px;display:none}
+        .success{background-color:#ecfdf5;color:#065f46;border:1px solid #bbf7d0;display:block}
+        .error{background-color:#fff1f2;color:#7f1d1d;border:1px solid #fecaca;display:block}
+
+        /* Decorative trees */
+        .tree{position:fixed;bottom:0;width:160px;height:220px;z-index:1;pointer-events:none}
+        .tree.left{left:12px;transform:scale(0.9)}
+        .tree.right{right:12px;transform:scale(0.9)}
+
+        /* Responsive tweaks */
+        @media (max-width:640px){
+            .container{padding:10px;margin:10px}
+            textarea{min-height:200px}
+            .actions{flex-direction:column}
+            .actions .btn{width:100%}
+            .tree{width:120px;height:170px}
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="postForm">
+        <header class="xmas"><div class="logo"><span class="star">🎄</span>Christmas Jumper</div><div style="color:#475569">Send a festive message</div></header>
+        <h2>Send the Christmas Message to the jumper</h2>
+        <p>The message below will be posted from this S3 hosted page to the API Gateway endpoint, which will place it on an SQS queue. Ho ho ho! 🎅</p>
+
+        <div class="field">
+            <label for="messageInput">Message (plain text or JSON)</label>
+            <textarea id="messageInput" placeholder='Plain text or JSON. Plain text will be wrapped automatically when sending.' aria-label="Message input" required></textarea>
+            <div class="example small">Tip: You can paste free text (e.g. "Hello from S3!") — it will be sent as <code>{"message":"Hello from S3!"}</code>. If you paste JSON it will be sent as-is.</div>
+        </div>
+
+        <div class="actions">
+            <button class="btn full" id="submitBtn">Submit Data</button>
+            <button class="btn ghost" id="prettyBtn" type="button">Pretty Print</button>
+        </div>
+
+        <div id="message" role="status" aria-live="polite"></div>
+    </div>
+</div>
+
+    <!-- Decorative SVG trees -->
+    <svg class="tree left" viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g transform="translate(50,10)">
+            <polygon points="0,0 -30,40 30,40" fill="#0b6623"/>
+            <polygon points="0,22 -34,66 34,66" fill="#0b7a2b"/>
+            <polygon points="0,44 -38,92 38,92" fill="#0c8a36"/>
+            <rect x="-6" y="92" width="12" height="28" fill="#6b4226" rx="2"/>
+            <!-- ornaments -->
+            <circle cx="-10" cy="40" r="3.5" fill="#f43f5e"/>
+            <circle cx="8" cy="60" r="3.5" fill="#f59e0b"/>
+            <circle cx="-2" cy="72" r="3.5" fill="#06b6d4"/>
+        </g>
+    </svg>
+
+    <svg class="tree right" viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g transform="translate(50,10)">
+            <polygon points="0,0 -30,40 30,40" fill="#0b6623"/>
+            <polygon points="0,22 -34,66 34,66" fill="#0b7a2b"/>
+            <polygon points="0,44 -38,92 38,92" fill="#0c8a36"/>
+            <rect x="-6" y="92" width="12" height="28" fill="#6b4226" rx="2"/>
+            <circle cx="-12" cy="50" r="3.5" fill="#f43f5e"/>
+            <circle cx="10" cy="70" r="3.5" fill="#f59e0b"/>
+            <circle cx="2" cy="62" r="3.5" fill="#06b6d4"/>
+        </g>
+    </svg>
+
+<script>
+    // IMPORTANT: Replace with your actual API endpoint if needed
+    const API_ENDPOINT = 'https://3zmna31xi1.execute-api.eu-west-2.amazonaws.com/prod/data';
+
+    const inputElement = document.getElementById('messageInput');
+    const outputElement = document.getElementById('message');
+    const submitBtn = document.getElementById('submitBtn');
+    const prettyBtn = document.getElementById('prettyBtn');
+
+    function showMessage(text, kind){
+        outputElement.className = kind;
+        outputElement.textContent = text;
+        outputElement.style.display = 'block';
+    }
+
+    function hideMessage(){ outputElement.style.display = 'none'; outputElement.className = ''; outputElement.textContent = ''; }
+
+    // Auto-format: convert plain text into a JSON wrapper or pretty-print valid JSON
+    prettyBtn.addEventListener('click', ()=>{
+        const raw = inputElement.value.trim();
+        if(!raw){ showMessage('Nothing to format.', 'error'); return }
+        try{
+            // If it's valid JSON, pretty-print it
+            const obj = JSON.parse(raw);
+            inputElement.value = JSON.stringify(obj, null, 2);
+            hideMessage();
+        }catch(e){
+            // Not JSON — wrap as { message: raw }
+            const wrapped = { message: raw };
+            inputElement.value = JSON.stringify(wrapped, null, 2);
+            hideMessage();
+        }
+    });
+
+    submitBtn.addEventListener('click', async ()=>{
+        hideMessage();
+        const messageBody = inputElement.value.trim();
+        if(!messageBody){ showMessage('Please enter a JSON message before submitting.', 'error'); return }
+
+        // Build the JSON that will be sent: if input is valid JSON, send it as-is,
+        // otherwise wrap the text into an object: { "message": "<text>" }
+        let payloadObj;
+        try{
+            payloadObj = JSON.parse(messageBody);
+        }catch(e){
+            payloadObj = { message: messageBody };
+        }
+
+        const payloadText = JSON.stringify(payloadObj);
+
+        showMessage('Sending...', '');
+
+        try{
+            const resp = await fetch(API_ENDPOINT, {
+                method: 'POST', headers: {'Content-Type':'application/json'}, body: payloadText
+            });
+            const data = await resp.json().catch(()=>null);
+            if(resp.ok){ showMessage('Success! Message queued.' + (data ? ' API response: ' + JSON.stringify(data) : ''), 'success'); }
+            else { showMessage('API Error: ' + resp.status + (data ? ' - ' + JSON.stringify(data) : ''), 'error'); }
+        }catch(err){ showMessage('Network error: ' + err.message, 'error'); }
+    });
+</script>
+
+</body>
+</html>
