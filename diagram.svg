@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="360" viewBox="0 0 800 360">
+  <style>
+    .box { fill:#ffffff; stroke:#0b1220; stroke-width:2; rx:8; }
+    .text { font-family: system-ui, Arial, sans-serif; fill:#0b1220; font-size:14px }
+    .arrow { stroke:#0b1220; stroke-width:2; fill:none; marker-end: url(#arrowhead); }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#0b1220" />
+    </marker>
+  </defs>
+
+  <!-- Browser -->
+  <rect x="24" y="28" width="180" height="72" class="box"/>
+  <text x="34" y="52" class="text">Browser / S3</text>
+  <text x="34" y="72" class="text">index.html (POST JSON)</text>
+
+  <!-- API Gateway -->
+  <rect x="260" y="24" width="200" height="80" class="box"/>
+  <text x="270" y="52" class="text">API Gateway / Endpoint</text>
+  <text x="270" y="72" class="text">Receives JSON → enqueues SQS</text>
+
+  <!-- SQS -->
+  <rect x="520" y="24" width="180" height="72" class="box"/>
+  <text x="530" y="52" class="text">AWS SQS Queue</text>
+
+  <!-- Arrows top row -->
+  <path d="M204 64 L260 64" class="arrow" />
+  <path d="M460 64 L520 64" class="arrow" />
+
+  <!-- Raspberry Pi block -->
+  <rect x="120" y="150" width="560" height="160" class="box"/>
+  <text x="140" y="178" class="text">Raspberry Pi</text>
+  <text x="140" y="198" class="text">- Runs `cslm-christmas.py` (SQS poller)</text>
+  <text x="140" y="216" class="text">- Writes `messages` file, prints stats</text>
+
+  <!-- LCD -->
+  <rect x="160" y="220" width="180" height="72" class="box"/>
+  <text x="172" y="246" class="text">20x4 LCD (I2C PCF8574)</text>
+  <text x="172" y="266" class="text">SDA: BCM2 (pin3), SCL: BCM3 (pin5)</text>
+
+  <!-- NeoPixel -->
+  <rect x="420" y="220" width="220" height="72" class="box"/>
+  <text x="440" y="246" class="text">NeoPixel strip (WS2812)</text>
+  <text x="440" y="266" class="text">Data: BCM18 (pin12) — 5V power & GND</text>
+
+  <!-- Arrows to Pi -->
+  <path d="M600 64 L600 150" class="arrow" />
+  <path d="M600 150 L680 150" class="arrow" />
+  <path d="M680 150 L680 210" class="arrow" />
+
+  <!-- Arrow SQS to Pi -->
+  <path d="M610 96 L610 150" class="arrow" />
+  <text x="620" y="124" class="text">polled by</text>
+
+  <!-- connectors from Pi to peripherals -->
+  <path d="M200 150 L200 220" class="arrow" />
+  <path d="M360 220 L360 220" class="arrow" />
+
+</svg>

@@ -57,16 +57,17 @@
     <div id="postForm">
         <header class="xmas"><div class="logo"><span class="star">🎄</span>Christmas Jumper</div><div style="color:#475569">Send a festive message</div></header>
         <h2>Send the Christmas Message to the jumper</h2>
-        <p>The message below will be posted from this S3 hosted page to the API Gateway endpoint, which will place it on an SQS queue. Ho ho ho! 🎅</p>
+        <p>The message below will go through a CloudFront instance, webpage hosted on s3 which passes it to an API Gateway endpoint which pops it onto an SQS queue to be picked up by the jumper Ho ho ho! 🎅</p>
 
         <div class="field">
             <label for="messageInput">Message (plain text or JSON)</label>
-            <textarea id="messageInput" placeholder='Plain text or JSON. Plain text will be wrapped automatically when sending.' aria-label="Message input" required></textarea>
+            <textarea id="messageInput" maxlength="80" placeholder='Plain text or JSON. Plain text will be wrapped automatically when sending.' aria-label="Message input" required></textarea>
+            <div id="charCount" class="example small">0 / 80 characters</div>
             <div class="example small">Tip: You can paste free text (e.g. "Hello from S3!") — it will be sent as <code>{"message":"Hello from S3!"}</code>. If you paste JSON it will be sent as-is.</div>
         </div>
 
         <div class="actions">
-            <button class="btn full" id="submitBtn">Submit Data</button>
+            <button class="btn full ghost" id="submitBtn">Submit Data</button>
             <button class="btn ghost" id="prettyBtn" type="button">Pretty Print</button>
         </div>
 
@@ -107,6 +108,16 @@
     const inputElement = document.getElementById('messageInput');
     const outputElement = document.getElementById('message');
     const submitBtn = document.getElementById('submitBtn');
+    const charCount = document.getElementById('charCount');
+
+    function updateCharCount(){
+        if(!charCount) return;
+        const len = inputElement.value.length;
+        charCount.textContent = `${len} / 80 characters`;
+    }
+    inputElement.addEventListener('input', updateCharCount);
+    // initialize counter
+    updateCharCount();
     const prettyBtn = document.getElementById('prettyBtn');
 
     function showMessage(text, kind){
