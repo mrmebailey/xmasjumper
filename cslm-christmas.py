@@ -13,9 +13,11 @@ from datetime import datetime
 import sys
 import json
 import textwrap
+import os
+import re
 try:
     import boto3
-    from botocore.exceptions import BotoCoreError, ClientError
+    from botocore.exceptions import BotoCoreError, ClientError, NoRegionError
 except Exception:
     boto3 = None
 
@@ -132,6 +134,40 @@ def _display_on_lcd_multiline(text, hold_seconds=6):
         print('LCD display error:', e)
 
 
+def show_countdown_for(duration_seconds):
+    """Display the Christmas countdown (similar to loop()) for duration_seconds seconds.
+    Updates once per second and then returns.
+    """
+    try:
+        end = int(duration_seconds)
+        start_time = 0
+        # ensure backlight
+        try:
+            mcp.output(3,1)
+            lcd.begin(20,4)
+        except Exception:
+            pass
+
+        for i in range(end):
+            days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
+            try:
+                lcd.clear()
+                lcd.setCursor(0,0)
+                lcd.message('HAPPY CSLM CHRISTMAS')
+                lcd.setCursor(0,1)
+                lcd.message(("{} days, {} hours".format(days, hours)))
+                lcd.setCursor(0,2)
+                lcd.message(("{} minutes and".format(minutes)))
+                lcd.setCursor(0,3)
+                lcd.message(("{} seconds to xmas".format(seconds)))
+            except Exception:
+                # If LCD fails, just print to console
+                print('Countdown:', days, hours, minutes, seconds)
+            sleep(1)
+    except Exception as e:
+        print('Countdown display error:', e)
+
+
 def poll_sqs_and_display(queue_url, wait_time=10):
     """Long-poll the given SQS queue and display each incoming message on the LCD.
 
@@ -141,7 +177,20 @@ def poll_sqs_and_display(queue_url, wait_time=10):
     if boto3 is None:
         raise RuntimeError('boto3 is required for SQS polling')
 
-    sqs = boto3.client('sqs')
+    # Determine AWS region: prefer env vars, else try to parse from the queue URL
+    region = os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION')
+    if not region and queue_url:
+        m = re.search(r'https?://sqs\.([a-z0-9-]+)\.amazonaws\.com', queue_url)
+        if m:
+            region = m.group(1)
+
+    try:
+        if region:
+            sqs = boto3.client('sqs', region_name="eu-west-2")
+        else:
+            sqs = boto3.client('sqs')
+    except NoRegionError:
+        raise RuntimeError('AWS region not configured. Set AWS_REGION or AWS_DEFAULT_REGION, or provide a queue URL that contains the region.')
     print('Polling SQS queue:', queue_url)
     # ensure backlight and LCD are ready
     try:
@@ -150,13 +199,15 @@ def poll_sqs_and_display(queue_url, wait_time=10):
     except Exception:
         pass
 
+    # Poll every 15 seconds. We'll do a short receive (no long-poll) and then
+    # when there are no messages display the countdown for 15 seconds.
     while True:
         try:
             resp = sqs.receive_message(
                 QueueUrl=queue_url,
                 MaxNumberOfMessages=1,
-                WaitTimeSeconds=wait_time,
-                VisibilityTimeout=30,
+                WaitTimeSeconds=0,
+                VisibilityTimeout=60,
                 MessageAttributeNames=['All']
             )
         except (BotoCoreError, ClientError) as e:
@@ -166,7 +217,8 @@ def poll_sqs_and_display(queue_url, wait_time=10):
 
         messages = resp.get('Messages') or []
         if not messages:
-            # no messages — loop again
+            # no messages — show countdown for 15 seconds then poll again
+            show_countdown_for(15)
             continue
 
         for msg in messages:
@@ -198,9 +250,9 @@ def poll_sqs_and_display(queue_url, wait_time=10):
             except Exception:
                 display_text = str(body)
 
-            # Show on LCD
+            # Show on LCD for 60 seconds
             print('Displaying message:', display_text)
-            _display_on_lcd_multiline(display_text)
+            _display_on_lcd_multiline(display_text, hold_seconds=60)
 
             # Delete message from queue
             receipt = msg.get('ReceiptHandle')
@@ -226,8 +278,8 @@ lcd = Adafruit_CharLCD(pin_rs=0, pin_e=2, pins_db=[4,5,6,7], GPIO=mcp)
 
 if __name__ == '__main__':
     print ('Program is starting ... ')
-    # If boto3 is available and the user passed 'sqs' as an argument, poll SQS
-    if len(sys.argv) > 1 and sys.argv[1].lower() == 'sqs':
+    # If boto3 is available and the user passed 'sq', 'sqs' or 'poll' as an argument, poll SQS
+    if len(sys.argv) > 1 and sys.argv[1].lower().startswith(('sq','sqs','poll')):
         if boto3 is None:
             print('boto3 is not installed; install it to use SQS polling: pip install boto3')
             sys.exit(1)
