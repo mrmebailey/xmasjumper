@@ -84,15 +84,26 @@ def loop():
     # draw static header once
     write_row(0, 'HAPPY CSLM CHRISTMAS')
 
+    # track previous values so we only write changed rows
+    prev_line1 = prev_line2 = prev_line3 = None
     while True:
         days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
-        # Update only the changing parts each second
-        # Line 1: days and hours
-        write_row(1, f"{days} days {hours}h")
-        # Line 2: minutes and seconds
-        write_row(2, f"{minutes}m {seconds}s to xmas")
-        # Line 3: current time
-        write_row(3, get_time_now())
+        # Prepare the text for each row
+        line1 = f"{days} days {hours}h"
+        line2 = f"{minutes}m {seconds}s to xmas"
+        line3 = get_time_now()
+
+        # Only update rows that changed
+        if line1 != prev_line1:
+            write_row(1, line1)
+            prev_line1 = line1
+        if line2 != prev_line2:
+            write_row(2, line2)
+            prev_line2 = line2
+        if line3 != prev_line3:
+            write_row(3, line3)
+            prev_line3 = line3
+
         sleep(1)
  
 def destroy():
