@@ -69,19 +69,30 @@ def calculate_time_to_christmas():
 def loop():
     mcp.output(3,1)     # turn on LCD backlight
     lcd.begin(20,4)     # set number of LCD lines and columns
-    lcd.setCursor(0,0)  # set cursor position
-    lcd.message( 'HAPPY CSLM CHRISTMAS')
-    while(True):         
+
+    def write_row(row, text):
+        """Write a single 20-char row without clearing the display.
+        Pads or truncates text to exactly 20 chars so previous content is overwritten."""
+        try:
+            s = str(text)[:20].ljust(20)
+            lcd.setCursor(0, row)
+            lcd.message(s)
+        except Exception:
+            # If LCD fails, ignore and continue
+            pass
+
+    # draw static header once
+    write_row(0, 'HAPPY CSLM CHRISTMAS')
+
+    while True:
         days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
-        #lcd.clear()
-        lcd.setCursor(0,1)  # set cursor position
-        lcd.message(("{} days, {} hours".format(days, hours, minutes, seconds)))
-        lcd.setCursor(0,2)  # set cursor position
-        #lcd.message( 'CPU: ' + get_cpu_temp()+'\n' )# display CPU temperature
-        lcd.message(("{} minutes and".format(minutes, seconds)))
-        lcd.setCursor(0,3)  # set cursor position
-        lcd.message(("{} seconds to xmas".format(seconds)))
-        #lcd.message( get_time_now() )   # display the time
+        # Update only the changing parts each second
+        # Line 1: days and hours
+        write_row(1, f"{days} days {hours}h")
+        # Line 2: minutes and seconds
+        write_row(2, f"{minutes}m {seconds}s to xmas")
+        # Line 3: current time
+        write_row(3, get_time_now())
         sleep(1)
  
 def destroy():
