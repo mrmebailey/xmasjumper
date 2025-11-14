@@ -71,11 +71,12 @@ def loop():
     lcd.begin(20,4)     # set number of LCD lines and columns
 
     # draw static header once
-    write_row(0, 'HAPPY CSLM CHRISTMAS')
+   
 
     # track previous values so we only write changed rows
     prev_line1 = prev_line2 = prev_line3 = None
     while True:
+        write_row(0, 'HAPPY CSLM CHRISTMAS')
         days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
         # Prepare the text for each row. Use minute granularity to avoid per-second updates.
         line1 = f"{days} days {hours}h"
