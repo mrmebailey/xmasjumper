@@ -78,7 +78,7 @@ def loop():
         days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
         # Prepare the text for each row. Use minute granularity to avoid per-second updates.
         line1 = f"{days} days {hours} hours"
-        line2 = f"{minutes} minutes to xmas"
+        line2 = f"{minutes} minutes to Christmas day"
         # show time as HH:MM (no seconds) to reduce updates
         now = datetime.now()
         line3 = now.strftime('    %H:%M')
