@@ -304,12 +304,12 @@ if __name__ == '__main__':
 
         try:
             poll_sqs_and_display(queue_url)
+            sleep(5)
         except KeyboardInterrupt:
             destroy()
     else:
         try:
             loop()
-            sleep(15)
         except KeyboardInterrupt:
             destroy()
 
