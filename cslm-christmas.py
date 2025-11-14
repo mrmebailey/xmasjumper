@@ -21,6 +21,28 @@ try:
 except Exception:
     boto3 = None
 
+# Simple runtime counters for logging
+api_call_count = 0
+messages_picked_count = 0
+
+def append_message_to_file(message_text, filename='messages'):
+    """Append a timestamped message to the `messages` file.
+    Each line: YYYY-MM-DD HH:MM:SS - message
+    """
+    try:
+        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(filename, 'a', encoding='utf-8') as fh:
+            fh.write(f"{ts} - {message_text}\n")
+    except Exception as e:
+        print('Failed to write message file:', e)
+
+def log_stats():
+    """Print simple stats about API usage and messages picked up."""
+    try:
+        print(f"SQS API calls: {api_call_count}, messages picked: {messages_picked_count}")
+    except Exception:
+        pass
+
 
  
 def get_cpu_temp():     # get CPU temperature and store it into file "/sys/class/thermal/thermal_zone0/temp"
@@ -243,6 +265,9 @@ def poll_sqs_and_display(queue_url, wait_time=10):
     # when there are no messages display the countdown for 15 seconds.
     while True:
         try:
+            # Count the API call (receive)
+            global api_call_count, messages_picked_count
+            api_call_count += 1
             resp = sqs.receive_message(
                 QueueUrl=queue_url,
                 MaxNumberOfMessages=1,
@@ -257,6 +282,8 @@ def poll_sqs_and_display(queue_url, wait_time=10):
                 show_countdown_for(15)
                 continue
 
+            # we received one or more messages
+            messages_picked_count += len(messages)
             for msg in messages:
                 body = msg.get('Body', '')
                 display_text = None
@@ -290,13 +317,26 @@ def poll_sqs_and_display(queue_url, wait_time=10):
                 print('Displaying message:', display_text)
                 _display_on_lcd_multiline(display_text, hold_seconds=60)
 
+                # append to messages file with timestamp
+                try:
+                    append_message_to_file(display_text)
+                except Exception:
+                    pass
+
                 # Delete message from queue
                 receipt = msg.get('ReceiptHandle')
                 if receipt:
                     try:
+                        # Count the API call (delete)
+                        api_call_count += 1
                         sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt)
                     except Exception as e:
                         print('Failed to delete message:', e)
+            # Log stats after processing this batch
+            try:
+                log_stats()
+            except Exception:
+                pass
         except (BotoCoreError, ClientError) as e:
             print('SQS receive error:', e)
             sleep(5)
