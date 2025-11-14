@@ -188,9 +188,9 @@ def show_countdown_for(duration_seconds):
         for i in range(end):
             days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
             line1 = f"{days} days {hours} hours"
-            line2 = f"{minutes} minutes to christmas"
+            line2 = f"{minutes} minutes to xmas"
             now = datetime.now()
-            line3 = now.strftime('    %H:%M')
+            line3 = now.strftime('Time now %H:%M')
             try:
                 if line1 != prev1:
                     write_row(1, line1)
