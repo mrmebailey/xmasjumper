@@ -10,6 +10,15 @@ from Adafruit_LCD2004 import Adafruit_CharLCD
 
 from time import sleep, strftime
 from datetime import datetime
+import sys
+import json
+import textwrap
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+except Exception:
+    boto3 = None
+
 
  
 def get_cpu_temp():     # get CPU temperature and store it into file "/sys/class/thermal/thermal_zone0/temp"
@@ -33,7 +42,7 @@ def calculate_time_to_christmas():
     # Check if Christmas has already passed this year, and if so, target next year
     if current_time > christmas_day:
         christmas_year += 1
-        christmas_day = datetime.datetime(christmas_year, 12, 25, 0, 0, 0)
+        christmas_day = datetime(christmas_year, 12, 25, 0, 0, 0)
         
     # Calculate the difference (timedelta)
     time_to_christmas = christmas_day - current_time
@@ -75,6 +84,131 @@ def loop():
  
 def destroy():
     lcd.clear()
+
+
+def _format_to_4_lines(text, width=20):
+    """Format arbitrary text into up to four lines of given width for a 20x4 LCD.
+    Returns a list of 4 strings (may be empty strings).
+    """
+    if text is None:
+        text = ''
+    # Normalize whitespace
+    txt = ' '.join(str(text).split())
+    # If text is JSON string representing an object with a 'message' key, prefer that
+    try:
+        parsed = json.loads(txt)
+        if isinstance(parsed, dict) and 'message' in parsed:
+            txt = str(parsed['message'])
+    except Exception:
+        pass
+
+    # Wrap into lines
+    parts = textwrap.wrap(txt, width=width)
+    # If there are more than 4 lines, concatenate extras into the last line truncated
+    if len(parts) > 4:
+        parts = parts[:3] + [ ' '.join(parts[3:]) ]
+    # Ensure exactly 4 lines
+    while len(parts) < 4:
+        parts.append('')
+    # Truncate each line to width
+    parts = [p[:width] for p in parts]
+    return parts
+
+
+def _display_on_lcd_multiline(text, hold_seconds=6):
+    """Clear the LCD and display `text` across 4 lines (20 chars each).
+    Keeps message on screen for `hold_seconds` seconds.
+    """
+    lines = _format_to_4_lines(text, width=20)
+    try:
+        lcd.clear()
+        for row, line in enumerate(lines):
+            lcd.setCursor(0, row)
+            # Adafruit LCD's message accepts a string
+            lcd.message(line)
+        # keep the message visible for a short while
+        sleep(hold_seconds)
+    except Exception as e:
+        print('LCD display error:', e)
+
+
+def poll_sqs_and_display(queue_url, wait_time=10):
+    """Long-poll the given SQS queue and display each incoming message on the LCD.
+
+    This function requires `boto3` and valid AWS credentials (environment, IAM role, etc.).
+    It deletes messages after displaying them.
+    """
+    if boto3 is None:
+        raise RuntimeError('boto3 is required for SQS polling')
+
+    sqs = boto3.client('sqs')
+    print('Polling SQS queue:', queue_url)
+    # ensure backlight and LCD are ready
+    try:
+        mcp.output(3,1)
+        lcd.begin(20,4)
+    except Exception:
+        pass
+
+    while True:
+        try:
+            resp = sqs.receive_message(
+                QueueUrl=queue_url,
+                MaxNumberOfMessages=1,
+                WaitTimeSeconds=wait_time,
+                VisibilityTimeout=30,
+                MessageAttributeNames=['All']
+            )
+        except (BotoCoreError, ClientError) as e:
+            print('SQS receive error:', e)
+            sleep(5)
+            continue
+
+        messages = resp.get('Messages') or []
+        if not messages:
+            # no messages — loop again
+            continue
+
+        for msg in messages:
+            body = msg.get('Body', '')
+            display_text = None
+            # body may itself be JSON; try to extract sensible text
+            try:
+                parsed = json.loads(body)
+                # If SQS message contains SNS envelope or stringified message, try common fields
+                if isinstance(parsed, dict):
+                    # Common SNS -> message key
+                    if 'Message' in parsed and isinstance(parsed['Message'], str):
+                        # Message may itself be JSON
+                        try:
+                            inner = json.loads(parsed['Message'])
+                            if isinstance(inner, dict) and 'message' in inner:
+                                display_text = inner['message']
+                            else:
+                                display_text = parsed['Message']
+                        except Exception:
+                            display_text = parsed['Message']
+                    elif 'message' in parsed:
+                        display_text = parsed['message']
+                    else:
+                        # fallback to the stringified dict
+                        display_text = json.dumps(parsed)
+                else:
+                    display_text = str(parsed)
+            except Exception:
+                display_text = str(body)
+
+            # Show on LCD
+            print('Displaying message:', display_text)
+            _display_on_lcd_multiline(display_text)
+
+            # Delete message from queue
+            receipt = msg.get('ReceiptHandle')
+            if receipt:
+                try:
+                    sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt)
+                except Exception as e:
+                    print('Failed to delete message:', e)
     
 PCF8574_address = 0x27  # I2C address of the PCF8574 chip.
 PCF8574A_address = 0x3F  # I2C address of the PCF8574A chip.
@@ -92,7 +226,26 @@ lcd = Adafruit_CharLCD(pin_rs=0, pin_e=2, pins_db=[4,5,6,7], GPIO=mcp)
 
 if __name__ == '__main__':
     print ('Program is starting ... ')
-    try:
-        loop()
-    except KeyboardInterrupt:
-        destroy()
+    # If boto3 is available and the user passed 'sqs' as an argument, poll SQS
+    if len(sys.argv) > 1 and sys.argv[1].lower() == 'sqs':
+        if boto3 is None:
+            print('boto3 is not installed; install it to use SQS polling: pip install boto3')
+            sys.exit(1)
+
+        # allow optional queue URL as second argument, otherwise use the default from the request
+        queue_url = None
+        if len(sys.argv) > 2:
+            queue_url = sys.argv[2]
+        else:
+            queue_url = 'https://sqs.eu-west-2.amazonaws.com/567919078991/xmasjumper'
+
+        try:
+            poll_sqs_and_display(queue_url)
+        except KeyboardInterrupt:
+            destroy()
+    else:
+        try:
+            loop()
+        except KeyboardInterrupt:
+            destroy()
+
