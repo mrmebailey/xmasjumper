@@ -309,6 +309,7 @@ if __name__ == '__main__':
     else:
         try:
             loop()
+            sleep(15)
         except KeyboardInterrupt:
             destroy()
 
