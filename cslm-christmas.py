@@ -187,8 +187,8 @@ def show_countdown_for(duration_seconds):
         prev1 = prev2 = prev3 = None
         for i in range(end):
             days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
-            line1 = f"{days} days {hours}h"
-            line2 = f"{minutes}m to xmas"
+            line1 = f"{days} days {hours} hours"
+            line2 = f"{minutes} minutes to christmas"
             now = datetime.now()
             line3 = now.strftime('    %H:%M')
             try:
