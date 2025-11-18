@@ -156,9 +156,11 @@ def loop():
         # Prepare the text for each row. Use minute granularity to avoid per-second updates.
         line1 = f"{days} days {hours} hours"
         line2 = f"{minutes} minutes to Christmas day"
-        # show time as HH:MM (no seconds) to reduce updates
+        # show time as HH:MM plus CPU temperature to reduce updates
         now = datetime.now()
-        line3 = now.strftime('    %H:%M')
+        cpu = get_cpu_temp()
+        # Format as 'HH:MM  xx.xx C' (fits in 20 chars); write_row will truncate/pad
+        line3 = f"Time: {now.strftime('%H:%M')} CPU: {cpu}"
 
         # Only update rows that changed
         if line1 != prev_line1:
@@ -288,7 +290,8 @@ def show_countdown_for(duration_seconds):
             line1 = f"{days} days {hours} hours"
             line2 = f"{minutes} minutes to xmas"
             now = datetime.now()
-            line3 = now.strftime('Time now %H:%M')
+            cpu = get_cpu_temp()
+            line3 = f"Time: {now.strftime('%H:%M')} CPU: {cpu}"
             try:
                 if line1 != prev1:
                     write_row(1, line1)
