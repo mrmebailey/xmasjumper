@@ -56,7 +56,25 @@ def start_neopixels():
     if not os.path.exists(path):
         print('Neopixel script not found:', path)
         return
-    cmd = ['sudo', sys.executable, path]
+    # Determine how to run the neopixel script:
+    # - If running as root, execute directly.
+    # - Else, if `sudo -n` works (won't prompt), use `sudo -n`.
+    # - Otherwise, refuse to start and print a helpful message.
+    def _can_use_sudo_n():
+        try:
+            r = subprocess.run(['sudo', '-n', 'true'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return r.returncode == 0
+        except Exception:
+            return False
+
+    if os.geteuid() == 0:
+        cmd = [sys.executable, path]
+    else:
+        if _can_use_sudo_n():
+            cmd = ['sudo', '-n', sys.executable, path]
+        else:
+            print('Cannot start neopixels: sudo would prompt for a password.\nRun this script as root or configure passwordless sudo for the neopixel script.')
+            return
     try:
         neopixel_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print('Started neopixel process, pid=', getattr(neopixel_proc, 'pid', None))
