@@ -8,7 +8,7 @@
 from PCF8574 import PCF8574_GPIO
 from Adafruit_LCD2004 import Adafruit_CharLCD
 
-from time import sleep, strftime
+from time import sleep
 from datetime import datetime
 import sys
 import json
@@ -16,17 +16,42 @@ import textwrap
 import os
 import re
 import subprocess
+import logging
 try:
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError, NoRegionError
 except Exception:
     boto3 = None
 
+# Configuration constants
+# LCD geometry
+LCD_COLS = 20
+LCD_ROWS = 4
+LINE_WIDTH = 20
+
+# NeoPixel script (expected next to this file)
+NEOPIXEL_SCRIPT = 'neopixel1.py'
+
+# Messages log filename
+MESSAGES_FILENAME = 'messages'
+
+# LCD header text
+HEADER_TEXT = 'HAPPY CSLM CHRISTMAS'
+
+# Stats persistence
+STATUS_FILENAME = 'stats.json'
+
+# SQS / polling defaults
+SQS_DEFAULT_QUEUE_URL = 'https://sqs.eu-west-2.amazonaws.com/567919078991/xmasjumper'
+POLL_NO_MESSAGE_SHOW = 15          # seconds to show countdown when no messages
+MESSAGE_HOLD_SECONDS = 60          # seconds to display an incoming message
+
+
 # Simple runtime counters for logging
 api_call_count = 0
 messages_picked_count = 0
 
-def append_message_to_file(message_text, filename='messages'):
+def append_message_to_file(message_text, filename=MESSAGES_FILENAME):
     """Append a timestamped message to the `messages` file.
     Each line: YYYY-MM-DD HH:MM:SS - message
     """
@@ -35,14 +60,39 @@ def append_message_to_file(message_text, filename='messages'):
         with open(filename, 'a', encoding='utf-8') as fh:
             fh.write(f"{ts} - {message_text}\n")
     except Exception as e:
-        print('Failed to write message file:', e)
+        logging.exception('Failed to write message file')
 
 def log_stats():
     """Print simple stats about API usage and messages picked up."""
     try:
-        print(f"SQS API calls: {api_call_count}, messages picked: {messages_picked_count}")
+        logging.info(f"SQS API calls: {api_call_count}, messages picked: {messages_picked_count}")
+        # persist stats
+        try:
+            save_stats()
+        except Exception:
+            logging.exception('Failed to save stats')
     except Exception:
         pass
+
+def load_stats():
+    global api_call_count, messages_picked_count
+    try:
+        if os.path.exists(STATUS_FILENAME):
+            with open(STATUS_FILENAME, 'r', encoding='utf-8') as fh:
+                data = json.load(fh)
+                api_call_count = int(data.get('api_call_count', 0))
+                messages_picked_count = int(data.get('messages_picked_count', 0))
+                logging.info('Loaded stats from %s', STATUS_FILENAME)
+    except Exception:
+        logging.exception('Failed to load stats')
+
+def save_stats():
+    try:
+        data = {'api_call_count': api_call_count, 'messages_picked_count': messages_picked_count}
+        with open(STATUS_FILENAME, 'w', encoding='utf-8') as fh:
+            json.dump(data, fh)
+    except Exception:
+        logging.exception('Failed to save stats')
 
 # Neopixel subprocess controller
 neopixel_proc = None
@@ -52,9 +102,9 @@ def start_neopixels():
     global neopixel_proc
     if neopixel_proc is not None and neopixel_proc.poll() is None:
         return
-    path = os.path.join(os.path.dirname(__file__), 'neopixel1.py')
+    path = os.path.join(os.path.dirname(__file__), NEOPIXEL_SCRIPT)
     if not os.path.exists(path):
-        print('Neopixel script not found:', path)
+        logging.error('Neopixel script not found: %s', path)
         return
     # Determine how to run the neopixel script:
     # - If running as root, execute directly.
@@ -69,17 +119,16 @@ def start_neopixels():
 
     if os.geteuid() == 0:
         cmd = [sys.executable, path]
-    else:
         if _can_use_sudo_n():
             cmd = ['sudo', '-n', sys.executable, path]
         else:
-            print('Cannot start neopixels: sudo would prompt for a password.\nRun this script as root or configure passwordless sudo for the neopixel script.')
+            logging.error('Cannot start neopixels: sudo would prompt for a password.\nRun this script as root or configure passwordless sudo for the neopixel script.')
             return
     try:
         neopixel_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print('Started neopixel process, pid=', getattr(neopixel_proc, 'pid', None))
+        logging.info('Started neopixel process, pid=%s', getattr(neopixel_proc, 'pid', None))
     except Exception as e:
-        print('Failed to start neopixel process:', e)
+        logging.exception('Failed to start neopixel process')
         neopixel_proc = None
 
 def stop_neopixels():
@@ -94,21 +143,20 @@ def stop_neopixels():
         except Exception:
             neopixel_proc.kill()
     except Exception as e:
-        print('Error stopping neopixel process:', e)
+        logging.exception('Error stopping neopixel process')
     finally:
         neopixel_proc = None
 
 
  
 def get_cpu_temp():     # get CPU temperature and store it into file "/sys/class/thermal/thermal_zone0/temp"
-    tmp = open('/sys/class/thermal/thermal_zone0/temp')
-    cpu = tmp.read()
-    tmp.close()
-    return '{:.2f}'.format( float(cpu)/1000 ) + ' C'
+    try:
+        with open('/sys/class/thermal/thermal_zone0/temp') as tmp:
+            cpu = tmp.read()
+        return '{:.2f}'.format(float(cpu)/1000) + ' C'
+    except Exception:
+        return 'N/A'
  
-def get_time_now():     # get system time
-    return datetime.now().strftime('    %H:%M:%S')
-   
 def calculate_time_to_christmas():
     # Set the target date for Christmas Day at midnight (00:00:00)
     # The year is set to the current year (2025 in this context)
@@ -126,9 +174,6 @@ def calculate_time_to_christmas():
     # Calculate the difference (timedelta)
     time_to_christmas = christmas_day - current_time
     
-    # Convert total difference to seconds
-    total_seconds = int(time_to_christmas.total_seconds())
-    
     # Calculate days, hours, minutes, and seconds from the timedelta object
     days = time_to_christmas.days
     seconds_in_day = time_to_christmas.seconds
@@ -141,25 +186,26 @@ def calculate_time_to_christmas():
     #print("\n--- Results ---")
     #print(f"Time to Christmas (D:H:M:S): {days} days, {hours} hours, {minutes} minutes, {seconds} seconds")
     #print(f"Total seconds to Christmas: {total_seconds} seconds")
-    return (days, seconds_in_day, hours, minutes, seconds)
+    # Return only the values the rest of the program uses (days, hours, minutes, seconds)
+    return (days, hours, minutes, seconds)
  
 def loop():
     mcp.output(3,1)     # turn on LCD backlight
-    lcd.begin(20,4)     # set number of LCD lines and columns
+    lcd.begin(LCD_COLS, LCD_ROWS)     # set number of LCD lines and columns
     # draw static header once
-    write_row(0, 'HAPPY CSLM CHRISTMAS')
+    write_row(0, HEADER_TEXT)
 
     # track previous values so we only write changed rows
     prev_line1 = prev_line2 = prev_line3 = None
     while True:
-        days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
+        days, hours, minutes, seconds = calculate_time_to_christmas()
         # Prepare the text for each row. Use minute granularity to avoid per-second updates.
         line1 = f"{days} days {hours} hours"
         line2 = f"{minutes} minutes to Christmas day"
         # show time as HH:MM plus CPU temperature to reduce updates
         now = datetime.now()
         cpu = get_cpu_temp()
-        # Format as 'HH:MM  xx.xx C' (fits in 20 chars); write_row will truncate/pad
+        # Format as 'HH:MM  xx.xx C' (fits in LINE_WIDTH); write_row will truncate/pad
         line3 = f"Time: {now.strftime('%H:%M')} CPU: {cpu}"
 
         # Only update rows that changed
@@ -190,7 +236,7 @@ def write_row(row, text):
     """Write a single 20-char row without clearing the display.
     Pads or truncates text to exactly 20 chars so previous content is overwritten."""
     try:
-        s = str(text)[:20].ljust(20)
+        s = str(text)[:LINE_WIDTH].ljust(LINE_WIDTH)
         lcd.setCursor(0, row)
         lcd.message(s)
     except Exception:
@@ -251,16 +297,16 @@ def _display_on_lcd_multiline(text, hold_seconds=6):
         except Exception:
             pass
         try:
-            write_row(0, 'HAPPY CSLM CHRISTMAS')
+                write_row(0, HEADER_TEXT)
         except Exception:
             pass
-    except Exception as e:
+    except Exception:
         # ensure neopixels stopped on unexpected errors
         try:
             stop_neopixels()
         except Exception:
             pass
-        print('LCD display error:', e)
+        logging.exception('LCD display error')
 
 
 def show_countdown_for(duration_seconds):
@@ -269,7 +315,6 @@ def show_countdown_for(duration_seconds):
     """
     try:
         end = int(duration_seconds)
-        start_time = 0
         # ensure backlight
         try:
             mcp.output(3,1)
@@ -279,14 +324,14 @@ def show_countdown_for(duration_seconds):
 
         # draw static header for countdown
         try:
-            write_row(0, 'HAPPY CSLM CHRISTMAS')
+            write_row(0, HEADER_TEXT)
         except Exception:
             pass
 
         # Only update rows that changed while counting down to avoid excessive writes
         prev1 = prev2 = prev3 = None
         for i in range(end):
-            days, seconds_in_day, hours, minutes, seconds = calculate_time_to_christmas()
+            days, hours, minutes, seconds = calculate_time_to_christmas()
             line1 = f"{days} days {hours} hours"
             line2 = f"{minutes} minutes to xmas"
             now = datetime.now()
@@ -303,10 +348,10 @@ def show_countdown_for(duration_seconds):
                     write_row(3, line3)
                     prev3 = line3
             except Exception:
-                print('Countdown:', days, hours, minutes, seconds)
+                logging.info('Countdown values: %s days %s hours %s minutes %s seconds', days, hours, minutes, seconds)
             sleep(1)
-    except Exception as e:
-        print('Countdown display error:', e)
+    except Exception:
+        logging.exception('Countdown display error')
 
 
 def poll_sqs_and_display(queue_url, wait_time=10):
@@ -332,7 +377,7 @@ def poll_sqs_and_display(queue_url, wait_time=10):
             sqs = boto3.client('sqs')
     except NoRegionError:
         raise RuntimeError('AWS region not configured. Set AWS_REGION or AWS_DEFAULT_REGION, or provide a queue URL that contains the region.')
-    print('Polling SQS queue:', queue_url)
+    logging.info('Polling SQS queue: %s', queue_url)
     # ensure backlight and LCD are ready
     try:
         mcp.output(3,1)
@@ -351,14 +396,14 @@ def poll_sqs_and_display(queue_url, wait_time=10):
                 QueueUrl=queue_url,
                 MaxNumberOfMessages=1,
                 WaitTimeSeconds=0,
-                VisibilityTimeout=60,
+                VisibilityTimeout=MESSAGE_HOLD_SECONDS,
                 MessageAttributeNames=['All']
             )
 
             messages = resp.get('Messages') or []
             if not messages:
-                # no messages — show countdown for 15 seconds then poll again
-                show_countdown_for(15)
+                # no messages — show countdown for POLL_NO_MESSAGE_SHOW seconds then poll again
+                show_countdown_for(POLL_NO_MESSAGE_SHOW)
                 continue
 
             # we received one or more messages
@@ -392,9 +437,9 @@ def poll_sqs_and_display(queue_url, wait_time=10):
                 except Exception:
                     display_text = str(body)
 
-                # Show on LCD for 60 seconds
-                print('Displaying message:', display_text)
-                _display_on_lcd_multiline(display_text, hold_seconds=60)
+                # Show on LCD for MESSAGE_HOLD_SECONDS seconds
+                logging.info('Displaying message: %s', display_text)
+                _display_on_lcd_multiline(display_text, hold_seconds=MESSAGE_HOLD_SECONDS)
 
                 # append to messages file with timestamp
                 try:
@@ -409,26 +454,27 @@ def poll_sqs_and_display(queue_url, wait_time=10):
                         # Count the API call (delete)
                         api_call_count += 1
                         sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt)
-                    except Exception as e:
-                        print('Failed to delete message:', e)
+                    except Exception:
+                        logging.exception('Failed to delete message')
             # Log stats after processing this batch
             try:
                 log_stats()
             except Exception:
                 pass
         except (BotoCoreError, ClientError) as e:
-            print('SQS receive error:', e)
+            logging.exception('SQS receive error')
             sleep(5)
             continue
         except Exception as e:
             # Unexpected error — log and return to allow main to fall back to loop()
-            print('Unexpected error in SQS poller:', e)
+            logging.exception('Unexpected error in SQS poller')
             try:
                 stop_neopixels()
             except Exception:
                 pass
             return
     
+# I2C addresses (kept here for historic reasons; can be changed)
 PCF8574_address = 0x27  # I2C address of the PCF8574 chip.
 PCF8574A_address = 0x3F  # I2C address of the PCF8574A chip.
 # Create PCF8574 GPIO adapter.
@@ -445,20 +491,23 @@ lcd = Adafruit_CharLCD(pin_rs=0, pin_e=2, pins_db=[4,5,6,7], GPIO=mcp)
 
 if __name__ == '__main__':
     try:
-        print('Program is starting ... ')
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+        logging.info('Program is starting ...')
+        # load persisted stats if present
+        load_stats()
         # If boto3 is available and the user passed 'sq', 'sqs' or 'poll' as an argument, poll SQS
         if len(sys.argv) > 1 and sys.argv[1].lower().startswith(('sq','sqs','poll')):
             if boto3 is None:
-                print('boto3 is not installed; install it to use SQS polling: pip install boto3')
+                logging.error('boto3 is not installed; install it to use SQS polling: pip install boto3')
                 sys.exit(1)
 
             # allow optional queue URL as second argument, otherwise use the default from the request
-            queue_url = sys.argv[2] if len(sys.argv) > 2 else 'https://sqs.eu-west-2.amazonaws.com/567919078991/xmasjumper'
+            queue_url = sys.argv[2] if len(sys.argv) > 2 else SQS_DEFAULT_QUEUE_URL
 
             try:
                 poll_sqs_and_display(queue_url)
                 # if poller returns (unexpectedly), fall back to loop()
-                print('SQS poller exited; falling back to local loop()')
+                logging.info('SQS poller exited; falling back to local loop()')
                 try:
                     loop()
                 except KeyboardInterrupt:
@@ -466,8 +515,8 @@ if __name__ == '__main__':
             except KeyboardInterrupt:
                 destroy()
             except Exception as e:
-                print('Error starting poller:', e)
-                print('Falling back to loop()')
+                logging.exception('Error starting poller')
+                logging.info('Falling back to loop()')
                 try:
                     loop()
                 except KeyboardInterrupt:
@@ -480,8 +529,8 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         destroy()
     except Exception as e:
-        # On any unexpected error, print and fall back to the loop display
-        print('Unhandled exception at top level:', e)
+        # On any unexpected error, log and fall back to the loop display
+        logging.exception('Unhandled exception at top level')
         try:
             loop()
         except KeyboardInterrupt:
