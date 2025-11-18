@@ -15,6 +15,7 @@ import json
 import textwrap
 import os
 import re
+import subprocess
 try:
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError, NoRegionError
@@ -42,6 +43,42 @@ def log_stats():
         print(f"SQS API calls: {api_call_count}, messages picked: {messages_picked_count}")
     except Exception:
         pass
+
+# Neopixel subprocess controller
+neopixel_proc = None
+
+def start_neopixels():
+    """Start `neopixel1.py` using sudo. If already running, do nothing."""
+    global neopixel_proc
+    if neopixel_proc is not None and neopixel_proc.poll() is None:
+        return
+    path = os.path.join(os.path.dirname(__file__), 'neopixel1.py')
+    if not os.path.exists(path):
+        print('Neopixel script not found:', path)
+        return
+    cmd = ['sudo', sys.executable, path]
+    try:
+        neopixel_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print('Started neopixel process, pid=', getattr(neopixel_proc, 'pid', None))
+    except Exception as e:
+        print('Failed to start neopixel process:', e)
+        neopixel_proc = None
+
+def stop_neopixels():
+    """Stop the running neopixel process if any."""
+    global neopixel_proc
+    if neopixel_proc is None:
+        return
+    try:
+        neopixel_proc.terminate()
+        try:
+            neopixel_proc.wait(timeout=5)
+        except Exception:
+            neopixel_proc.kill()
+    except Exception as e:
+        print('Error stopping neopixel process:', e)
+    finally:
+        neopixel_proc = None
 
 
  
@@ -119,7 +156,14 @@ def loop():
         sleep(1)
  
 def destroy():
-    lcd.clear()
+    try:
+        stop_neopixels()
+    except Exception:
+        pass
+    try:
+        lcd.clear()
+    except Exception:
+        pass
 
 
 def write_row(row, text):
@@ -174,14 +218,28 @@ def _display_on_lcd_multiline(text, hold_seconds=6):
             lcd.setCursor(0, row)
             # Adafruit LCD's message accepts a string
             lcd.message(line)
+        # start neopixel effects while message is shown
+        try:
+            start_neopixels()
+        except Exception:
+            pass
         # keep the message visible for a short while
         sleep(hold_seconds)
-        # restore the static header after the message is shown
+        # stop neopixels and restore the static header after the message is shown
+        try:
+            stop_neopixels()
+        except Exception:
+            pass
         try:
             write_row(0, 'HAPPY CSLM CHRISTMAS')
         except Exception:
             pass
     except Exception as e:
+        # ensure neopixels stopped on unexpected errors
+        try:
+            stop_neopixels()
+        except Exception:
+            pass
         print('LCD display error:', e)
 
 
@@ -344,6 +402,10 @@ def poll_sqs_and_display(queue_url, wait_time=10):
         except Exception as e:
             # Unexpected error — log and return to allow main to fall back to loop()
             print('Unexpected error in SQS poller:', e)
+            try:
+                stop_neopixels()
+            except Exception:
+                pass
             return
     
 PCF8574_address = 0x27  # I2C address of the PCF8574 chip.

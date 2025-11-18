@@ -49,6 +49,11 @@
             .actions .btn{width:100%}
             .tree{width:120px;height:170px}
         }
+        /* Modal prompt */
+        .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.6);z-index:999}
+        .modal-content{background:var(--card);color:#0b1220;padding:18px;border-radius:12px;max-width:420px;width:90%;box-shadow:0 10px 30px rgba(2,6,23,0.5)}
+        .modal-body{font-size:1rem;margin-bottom:12px}
+        .modal-actions{display:flex;gap:10px;justify-content:flex-end}
     </style>
 </head>
 <body>
@@ -72,6 +77,17 @@
         </div>
 
         <div id="message" role="status" aria-live="polite"></div>
+    </div>
+</div>
+
+<!-- Modal prompt shown after submitting a message -->
+<div id="resultModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" style="display:none">
+    <div class="modal-content" role="document">
+        <div id="modalText" class="modal-body"></div>
+        <div class="modal-actions">
+            <button id="modalAnother" class="btn ghost">Send another</button>
+            <button id="modalClose" class="btn">Close</button>
+        </div>
     </div>
 </div>
 
@@ -109,6 +125,10 @@
     const outputElement = document.getElementById('message');
     const submitBtn = document.getElementById('submitBtn');
     const charCount = document.getElementById('charCount');
+    const resultModal = document.getElementById('resultModal');
+    const modalText = document.getElementById('modalText');
+    const modalClose = document.getElementById('modalClose');
+    const modalAnother = document.getElementById('modalAnother');
 
     function updateCharCount(){
         if(!charCount) return;
@@ -118,6 +138,30 @@
     inputElement.addEventListener('input', updateCharCount);
     // initialize counter
     updateCharCount();
+
+    function openModal(text, kind){
+        if(!resultModal) return;
+        modalText.textContent = text;
+        resultModal.style.display = 'flex';
+        resultModal.setAttribute('aria-hidden','false');
+        // mark success visually (not required)
+        if(kind === 'success'){
+            modalText.style.color = '#065f46';
+        }else if(kind === 'error'){
+            modalText.style.color = '#7f1d1d';
+        }else{
+            modalText.style.color = '';
+        }
+    }
+
+    function closeModal(){
+        if(!resultModal) return;
+        resultModal.style.display = 'none';
+        resultModal.setAttribute('aria-hidden','true');
+    }
+
+    modalClose.addEventListener('click', ()=>{ closeModal(); });
+    modalAnother.addEventListener('click', ()=>{ inputElement.value = ''; updateCharCount(); closeModal(); inputElement.focus(); });
     const prettyBtn = document.getElementById('prettyBtn');
 
     function showMessage(text, kind){
@@ -168,8 +212,13 @@
                 method: 'POST', headers: {'Content-Type':'application/json'}, body: payloadText
             });
             const data = await resp.json().catch(()=>null);
-            if(resp.ok){ showMessage('Success! Message queued.' + (data ? ' API response: ' + JSON.stringify(data) : ''), 'success'); }
-            else { showMessage('API Error: ' + resp.status + (data ? ' - ' + JSON.stringify(data) : ''), 'error'); }
+            if(resp.ok){ 
+                // show a prompt modal instead of inline message
+                openModal('Success! Message queued.' + (data ? ' API response: ' + JSON.stringify(data) : ''), 'success');
+            }
+            else { 
+                openModal('API Error: ' + resp.status + (data ? ' - ' + JSON.stringify(data) : ''), 'error');
+            }
         }catch(err){ showMessage('Network error: ' + err.message, 'error'); }
     });
 </script>
