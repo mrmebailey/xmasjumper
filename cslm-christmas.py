@@ -51,6 +51,21 @@ MESSAGE_HOLD_SECONDS = 60          # seconds to display an incoming message
 api_call_count = 0
 messages_picked_count = 0
 
+# Cached sudo availability check (None = unknown, True/False = cached result)
+_sudo_n_available = None
+
+def can_use_sudo_n():
+    """Return True if `sudo -n true` can run without prompting. Cached result."""
+    global _sudo_n_available
+    if _sudo_n_available is not None:
+        return _sudo_n_available
+    try:
+        r = subprocess.run(['sudo', '-n', 'true'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _sudo_n_available = (r.returncode == 0)
+    except Exception:
+        _sudo_n_available = False
+    return _sudo_n_available
+
 def append_message_to_file(message_text, filename=MESSAGES_FILENAME):
     """Append a timestamped message to the `messages` file.
     Each line: YYYY-MM-DD HH:MM:SS - message
@@ -109,17 +124,13 @@ def start_neopixels():
     # Determine how to run the neopixel script:
     # - If running as root, execute directly.
     # - Else, if `sudo -n` works (won't prompt), use `sudo -n`.
-    # - Otherwise, refuse to start and print a helpful message.
-    def _can_use_sudo_n():
-        try:
-            r = subprocess.run(['sudo', '-n', 'true'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return r.returncode == 0
-        except Exception:
-            return False
-
+    # - Otherwise, refuse to start and log a helpful message.
     if os.geteuid() == 0:
+        # Already root — run the script directly with the current Python
         cmd = [sys.executable, path]
-        if _can_use_sudo_n():
+    else:
+        # Not root — prefer using non-interactive sudo if available
+        if can_use_sudo_n():
             cmd = ['sudo', '-n', sys.executable, path]
         else:
             logging.error('Cannot start neopixels: sudo would prompt for a password.\nRun this script as root or configure passwordless sudo for the neopixel script.')
