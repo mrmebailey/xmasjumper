@@ -598,6 +598,13 @@ except:
         exit(1)
 # Create LCD, passing in MCP GPIO adapter.
 lcd = Adafruit_CharLCD(pin_rs=0, pin_e=2, pins_db=[4,5,6,7], GPIO=mcp)
+try:
+    # Ensure the LCD object knows its dimensions early so startup displays
+    # (network info, etc.) can call setCursor safely.
+    lcd.begin(LCD_COLS, LCD_ROWS)
+except Exception:
+    # If begin fails, continue — other code will attempt to call begin when needed.
+    logging.exception('LCD begin() failed at startup')
 
 if __name__ == '__main__':
     try:
