@@ -240,11 +240,36 @@ def get_wifi_ssid():
         p = subprocess.run(['nmcli', '-t', '-f', 'ACTIVE,SSID', 'dev', 'wifi'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         out = (p.stdout or '').strip()
         for line in out.splitlines():
+            # nmcli -t prints lines like 'yes:MySSID' for the active network
             if line.startswith('yes:'):
                 parts = line.split(':', 1)
                 if len(parts) == 2 and parts[1]:
                     return parts[1]
     except Exception:
+        pass
+
+    # If we couldn't get an SSID, attempt a privileged rescan (if sudo -n is available)
+    try:
+        if can_use_sudo_n():
+            try:
+                subprocess.run(['sudo', 'nmcli', 'device', 'wifi', 'rescan'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+            except Exception:
+                # Ignore rescan failures and fall through to another nmcli query attempt
+                pass
+
+            # Re-query the Wi-Fi list after rescan
+            try:
+                p2 = subprocess.run(['nmcli', '-t', '-f', 'ACTIVE,SSID', 'dev', 'wifi'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                out2 = (p2.stdout or '').strip()
+                for line in out2.splitlines():
+                    if line.startswith('yes:'):
+                        parts = line.split(':', 1)
+                        if len(parts) == 2 and parts[1]:
+                            return parts[1]
+            except Exception:
+                pass
+    except Exception:
+        # If can_use_sudo_n() itself errors, just continue to final fallback
         pass
 
     return 'Unknown'
