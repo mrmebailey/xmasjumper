@@ -274,10 +274,25 @@ def display_network_info(hold_seconds=60):
     try:
         ssid = get_wifi_ssid()
         ip = get_ip_address()
-        lines = [f"WIFI: {ssid}", f"IP: {ip}", "", ""]
-        # Join into a single text blob for the multiline display helper
-        text = '\n'.join([l for l in lines if l is not None])
-        _display_on_lcd_multiline(text, hold_seconds=hold_seconds)
+        # Ensure backlight and LCD init like other display functions
+        try:
+            mcp.output(3, 1)
+            lcd.begin(LCD_COLS, LCD_ROWS)
+        except Exception:
+            # If hardware calls fail, continue and try writing anyway
+            pass
+
+        # Use the same per-row writer as the rest of the app so behaviour is consistent
+        try:
+            write_row(0, HEADER_TEXT)
+            write_row(1, f"WIFI: {ssid}")
+            write_row(2, f"IP: {ip}")
+            write_row(3, "")
+            sleep(int(hold_seconds))
+            # restore header after the hold
+            write_row(0, HEADER_TEXT)
+        except Exception:
+            logging.exception('Failed to write network info rows')
     except Exception:
         logging.exception('Failed to display network info')
  
