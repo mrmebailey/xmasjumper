@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import logging
+import socket
 try:
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError, NoRegionError
@@ -45,6 +46,8 @@ STATUS_FILENAME = 'stats.json'
 SQS_DEFAULT_QUEUE_URL = 'https://sqs.eu-west-2.amazonaws.com/567919078991/xmasjumper'
 POLL_NO_MESSAGE_SHOW = 15          # seconds to show countdown when no messages
 MESSAGE_HOLD_SECONDS = 60          # seconds to display an incoming message
+# Default AWS region to use if none is provided via env or queue URL
+DEFAULT_AWS_REGION = 'eu-west-2'
 
 
 # Simple runtime counters for logging
@@ -167,6 +170,23 @@ def get_cpu_temp():     # get CPU temperature and store it into file "/sys/class
         return '{:.2f}'.format(float(cpu)/1000) + ' C'
     except Exception:
         return 'N/A'
+
+def is_network_available(timeout=2):
+    """Quick check for basic network connectivity.
+    Tries to open a socket to a well-known public DNS server (TCP) to
+    determine if the network is up. Returns True if connection succeeds.
+    """
+    try:
+        # use TCP to 1.1.1.1:53 (Cloudflare DNS) which should be reachable
+        socket.setdefaulttimeout(timeout)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.connect(('1.1.1.1', 53))
+            return True
+        finally:
+            s.close()
+    except Exception:
+        return False
  
 def calculate_time_to_christmas():
     # Set the target date for Christmas Day at midnight (00:00:00)
@@ -199,6 +219,67 @@ def calculate_time_to_christmas():
     #print(f"Total seconds to Christmas: {total_seconds} seconds")
     # Return only the values the rest of the program uses (days, hours, minutes, seconds)
     return (days, hours, minutes, seconds)
+
+
+def get_wifi_ssid():
+    """Try to determine the connected Wi-Fi SSID.
+    Uses `iwgetid -r` if available, falls back to `nmcli` where present.
+    Returns the SSID string or 'Unknown'.
+    """
+    try:
+        # Try iwgetid first (commonly available on many systems)
+        p = subprocess.run(['iwgetid', '-r'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        ssid = (p.stdout or '').strip()
+        if ssid:
+            return ssid
+    except Exception:
+        pass
+
+    try:
+        # Try nmcli: look for an active wifi line
+        p = subprocess.run(['nmcli', '-t', '-f', 'ACTIVE,SSID', 'dev', 'wifi'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        out = (p.stdout or '').strip()
+        for line in out.splitlines():
+            if line.startswith('yes:'):
+                parts = line.split(':', 1)
+                if len(parts) == 2 and parts[1]:
+                    return parts[1]
+    except Exception:
+        pass
+
+    return 'Unknown'
+
+
+def get_ip_address():
+    """Return the primary IPv4 address of the host, or 'N/A' if unavailable.
+    Uses a UDP socket hack to determine the outbound IP without sending data.
+    """
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # This does not actually send data but forces the OS to pick a source IP
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+            return ip
+        finally:
+            s.close()
+    except Exception:
+        return 'N/A'
+
+
+def display_network_info(hold_seconds=60):
+    """Display the Wi-Fi SSID and IP address on the LCD for `hold_seconds` seconds.
+    This is intended to run once at startup.
+    """
+    try:
+        ssid = get_wifi_ssid()
+        ip = get_ip_address()
+        lines = [f"WIFI: {ssid}", f"IP: {ip}", "", ""]
+        # Join into a single text blob for the multiline display helper
+        text = '\n'.join([l for l in lines if l is not None])
+        _display_on_lcd_multiline(text, hold_seconds=hold_seconds)
+    except Exception:
+        logging.exception('Failed to display network info')
  
 def loop():
     mcp.output(3,1)     # turn on LCD backlight
@@ -374,20 +455,38 @@ def poll_sqs_and_display(queue_url, wait_time=10):
     if boto3 is None:
         raise RuntimeError('boto3 is required for SQS polling')
 
-    # Determine AWS region: prefer env vars, else try to parse from the queue URL
+    # If there's no network connectivity, bail out so the main program can
+    # continue displaying the local countdown instead of blocking here.
+    try:
+        if not is_network_available():
+            logging.warning('Network appears to be offline; skipping SQS poller')
+            return
+    except Exception:
+        # If the network check itself fails for any reason, don't prevent
+        # the program from continuing.
+        logging.exception('Network check failed; skipping SQS poller')
+        return
+
+    # Determine AWS region: prefer environment settings, then parse from the
+    # queue URL, otherwise fall back to the configured default region.
     region = os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION')
     if not region and queue_url:
         m = re.search(r'https?://sqs\.([a-z0-9-]+)\.amazonaws\.com', queue_url)
         if m:
             region = m.group(1)
+    if not region:
+        region = DEFAULT_AWS_REGION
 
     try:
         if region:
-            sqs = boto3.client('sqs', region_name="eu-west-2")
+            sqs = boto3.client('sqs', region_name=region)
         else:
             sqs = boto3.client('sqs')
     except NoRegionError:
         raise RuntimeError('AWS region not configured. Set AWS_REGION or AWS_DEFAULT_REGION, or provide a queue URL that contains the region.')
+    except Exception:
+        logging.exception('Failed to create SQS client (network/credentials issue)')
+        return
     logging.info('Polling SQS queue: %s', queue_url)
     # ensure backlight and LCD are ready
     try:
@@ -506,11 +605,20 @@ if __name__ == '__main__':
         logging.info('Program is starting ...')
         # load persisted stats if present
         load_stats()
+        # Show network info once at startup for 60 seconds (SSID + IP)
+        try:
+            display_network_info(60)
+        except Exception:
+            logging.exception('Error showing network info')
         # If boto3 is available and the user passed 'sq', 'sqs' or 'poll' as an argument, poll SQS
         if len(sys.argv) > 1 and sys.argv[1].lower().startswith(('sq','sqs','poll')):
             if boto3 is None:
-                logging.error('boto3 is not installed; install it to use SQS polling: pip install boto3')
-                sys.exit(1)
+                logging.error('boto3 is not installed; cannot start SQS polling. Falling back to local display loop.')
+                try:
+                    loop()
+                except KeyboardInterrupt:
+                    destroy()
+                sys.exit(0)
 
             # allow optional queue URL as second argument, otherwise use the default from the request
             queue_url = sys.argv[2] if len(sys.argv) > 2 else SQS_DEFAULT_QUEUE_URL
