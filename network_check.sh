@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/bash
 
 # Configuration
 TARGET="8.8.8.8"          # IP to ping (Google DNS). Use your router IP for local check.
