@@ -33,14 +33,20 @@ LINE_WIDTH = 20
 # NeoPixel script (expected next to this file)
 NEOPIXEL_SCRIPT = 'neopixel1.py'
 
-# Messages log filename
+# Messages log filename (we store logs next to the script path)
+try:
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+except Exception:
+    SCRIPT_DIR = os.getcwd()
 MESSAGES_FILENAME = 'messages'
+MESSAGES_FILE = os.path.join(SCRIPT_DIR, MESSAGES_FILENAME)
 
 # LCD header text
 HEADER_TEXT = 'HAPPY CSLM CHRISTMAS'
 
 # Stats persistence
 STATUS_FILENAME = 'stats.json'
+STATUS_FILE = os.path.join(SCRIPT_DIR, STATUS_FILENAME)
 
 # SQS / polling defaults
 SQS_DEFAULT_QUEUE_URL = 'https://sqs.eu-west-2.amazonaws.com/567919078991/xmasjumper'
@@ -69,10 +75,12 @@ def can_use_sudo_n():
         _sudo_n_available = False
     return _sudo_n_available
 
-def append_message_to_file(message_text, filename=MESSAGES_FILENAME):
+def append_message_to_file(message_text, filename=None):
     """Append a timestamped message to the `messages` file.
     Each line: YYYY-MM-DD HH:MM:SS - message
     """
+    if filename is None:
+        filename = MESSAGES_FILE
     try:
         ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with open(filename, 'a', encoding='utf-8') as fh:
@@ -95,19 +103,19 @@ def log_stats():
 def load_stats():
     global api_call_count, messages_picked_count
     try:
-        if os.path.exists(STATUS_FILENAME):
-            with open(STATUS_FILENAME, 'r', encoding='utf-8') as fh:
+        if os.path.exists(STATUS_FILE):
+            with open(STATUS_FILE, 'r', encoding='utf-8') as fh:
                 data = json.load(fh)
                 api_call_count = int(data.get('api_call_count', 0))
                 messages_picked_count = int(data.get('messages_picked_count', 0))
-                logging.info('Loaded stats from %s', STATUS_FILENAME)
+                logging.info('Loaded stats from %s', STATUS_FILE)
     except Exception:
         logging.exception('Failed to load stats')
 
 def save_stats():
     try:
         data = {'api_call_count': api_call_count, 'messages_picked_count': messages_picked_count}
-        with open(STATUS_FILENAME, 'w', encoding='utf-8') as fh:
+        with open(STATUS_FILE, 'w', encoding='utf-8') as fh:
             json.dump(data, fh)
     except Exception:
         logging.exception('Failed to save stats')
@@ -650,6 +658,9 @@ if __name__ == '__main__':
     try:
         logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
         logging.info('Program is starting ...')
+        logging.info('Script directory: %s', SCRIPT_DIR)
+        logging.info('Messages file: %s', MESSAGES_FILE)
+        logging.info('Stats file: %s', STATUS_FILE)
         # load persisted stats if present
         load_stats()
         # Show network info once at startup for 60 seconds (SSID + IP)
