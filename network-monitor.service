@@ -5,7 +5,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=mark
 # The script we created in Step 1
 ExecStart=/home/mark/xmasjumper/network_check.sh
 # Restart the service if it crashes (optional)
