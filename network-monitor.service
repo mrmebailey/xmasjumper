@@ -1,0 +1,15 @@
+[Unit]
+Description=Check for Network and Run Fallback if Failed
+# Wait until the network stack is physically up before starting
+After=network.target 
+
+[Service]
+Type=simple
+User=root
+# The script we created in Step 1
+ExecStart=/home/mark/xmasjumper/network_check.sh
+# Restart the service if it crashes (optional)
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
