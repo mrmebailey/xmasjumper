@@ -66,14 +66,12 @@
 
         <div class="field">
             <label for="messageInput">Message (plain text or JSON)</label>
-            <textarea id="messageInput" maxlength="80" placeholder='Plain text or JSON. Plain text will be wrapped automatically when sending.' aria-label="Message input" required></textarea>
+            <textarea id="messageInput" maxlength="80" placeholder='Enter a message to be displayed on the jumper and make the lights flash for 60 seconds.  All messages are logged ! :-)' aria-label="Message input" required></textarea>
             <div id="charCount" class="example small">0 / 80 characters</div>
-            <div class="example small">Tip: You can paste free text (e.g. "Hello from S3!") — it will be sent as <code>{"message":"Hello from S3!"}</code>. If you paste JSON it will be sent as-is.</div>
         </div>
 
         <div class="actions">
             <button class="btn full ghost" id="submitBtn">Submit Data</button>
-            <button class="btn ghost" id="prettyBtn" type="button">Pretty Print</button>
         </div>
 
         <div id="message" role="status" aria-live="polite"></div>
@@ -160,9 +158,9 @@
         resultModal.setAttribute('aria-hidden','true');
     }
 
-    modalClose.addEventListener('click', ()=>{ closeModal(); });
-    modalAnother.addEventListener('click', ()=>{ inputElement.value = ''; updateCharCount(); closeModal(); inputElement.focus(); });
-    const prettyBtn = document.getElementById('prettyBtn');
+    modalClose.addEventListener('click', ()=>{ hideMessage(); closeModal(); });
+    modalAnother.addEventListener('click', ()=>{ inputElement.value = ''; updateCharCount(); hideMessage(); closeModal(); inputElement.focus(); });
+    // pretty print button removed; no DOM element
 
     function showMessage(text, kind){
         outputElement.className = kind;
@@ -172,22 +170,7 @@
 
     function hideMessage(){ outputElement.style.display = 'none'; outputElement.className = ''; outputElement.textContent = ''; }
 
-    // Auto-format: convert plain text into a JSON wrapper or pretty-print valid JSON
-    prettyBtn.addEventListener('click', ()=>{
-        const raw = inputElement.value.trim();
-        if(!raw){ showMessage('Nothing to format.', 'error'); return }
-        try{
-            // If it's valid JSON, pretty-print it
-            const obj = JSON.parse(raw);
-            inputElement.value = JSON.stringify(obj, null, 2);
-            hideMessage();
-        }catch(e){
-            // Not JSON — wrap as { message: raw }
-            const wrapped = { message: raw };
-            inputElement.value = JSON.stringify(wrapped, null, 2);
-            hideMessage();
-        }
-    });
+    // Pretty-print removed; input is submitted as JSON wrapper when needed.
 
     submitBtn.addEventListener('click', async ()=>{
         hideMessage();
@@ -213,11 +196,14 @@
             });
             const data = await resp.json().catch(()=>null);
             if(resp.ok){ 
-                // show a prompt modal instead of inline message
+                // show inline 'sent' status and prompt modal
+                showMessage('Sent! Message queued.' + (data ? ' API response: ' + JSON.stringify(data) : ''), 'success');
                 openModal('Success! Message queued.' + (data ? ' API response: ' + JSON.stringify(data) : ''), 'success');
             }
             else { 
-                openModal('API Error: ' + resp.status + (data ? ' - ' + JSON.stringify(data) : ''), 'error');
+                const errText = 'API Error: ' + resp.status + (data ? ' - ' + JSON.stringify(data) : '');
+                showMessage(errText, 'error');
+                openModal(errText, 'error');
             }
         }catch(err){ showMessage('Network error: ' + err.message, 'error'); }
     });
