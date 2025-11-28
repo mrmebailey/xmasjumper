@@ -25,4 +25,4 @@ done
 echo "No network found after $TIMEOUT seconds. Starting fallback script..."
 
 # Execute the fallback script (ensure python or bash is used depending on script type)
-/usr/bin/python3 "$FALLBACK_SCRIPT"
+/usr/bin/python3 $FALLBACK_SCRIPT $MODE
