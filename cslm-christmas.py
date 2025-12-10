@@ -341,7 +341,7 @@ def loop():
         days, hours, minutes, seconds = calculate_time_to_christmas()
         # Prepare the text for each row. Use minute granularity to avoid per-second updates.
         line1 = f"{days} days {hours} hours"
-        line2 = f"{minutes} minutes to Christmas day"
+        line2 = f"{minutes} minutes to xmas"
         # show time as HH:MM plus CPU temperature to reduce updates
         now = datetime.now()
         cpu = get_cpu_temp()
