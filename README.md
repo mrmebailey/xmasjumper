@@ -2,12 +2,14 @@
 
 A small Raspberry Pi project that displays festive messages on a 20x4 I2C LCD and drives a NeoPixel strip. Messages can be submitted from a static S3-hosted web page (`index.html`) which posts to an API endpoint that places messages onto an SQS queue. The Pi polls SQS, displays incoming messages on the LCD, logs them to a `messages` file, and can be paired with NeoPixels for visual effects.
 
+![Jumpitecture Diagram](jumper-with-qr.png)
+
 **Contents**
 - `index.html` — static web UI to post messages (S3-hostable).
 - `cslm-christmas.py` — main Pi script: LCD display, SQS poller, message logging.
 - `neopixel1.py` — example NeoPixel control script (uses `board.D18`).
 - `messages` — runtime-generated log of received messages (created by the script).
-- `jumper-with-qr.png` — architecture diagram with QR code.
+- `jumper-with-qr.png` — Jumpitecture diagram.
 
 **Quick run**
 - Countdown display (local):
@@ -86,8 +88,6 @@ ASCII diagram
    - GPIO18 -> NeoPixel data -> NeoPixel strip
    - writes `messages` file and prints stats
 ```
-
-![Architecture Diagram](jumper-with-qr.png)
 
 Files and responsibilities
 - `index.html`: builds and POSTs JSON. Designed for S3 static hosting.
