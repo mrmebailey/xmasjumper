@@ -7,7 +7,7 @@ A small Raspberry Pi project that displays festive messages on a 20x4 I2C LCD an
 - `cslm-christmas.py` — main Pi script: LCD display, SQS poller, message logging.
 - `neopixel1.py` — example NeoPixel control script (uses `board.D18`).
 - `messages` — runtime-generated log of received messages (created by the script).
-- `diagram.svg` — simple architecture diagram.
+- `jumper-with-qr.png` — architecture diagram with QR code.
 
 **Quick run**
 - Countdown display (local):
@@ -87,7 +87,7 @@ ASCII diagram
    - writes `messages` file and prints stats
 ```
 
-See `diagram.svg` for a simple visual diagram in the repository root.
+![Architecture Diagram](jumper-with-qr.png)
 
 Files and responsibilities
 - `index.html`: builds and POSTs JSON. Designed for S3 static hosting.
