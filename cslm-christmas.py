@@ -43,7 +43,7 @@ MESSAGES_FILE = os.path.join(SCRIPT_DIR, MESSAGES_FILENAME)
 
 # LCD header text
 #HEADER_TEXT = 'HAPPY CFS CHRISTMAS'
-HEADER_TEXT = 'Happy Xmas St Albans'
+HEADER_TEXT = 'Happy Christmas day'
 
 # Stats persistence
 STATUS_FILENAME = 'stats.json'
