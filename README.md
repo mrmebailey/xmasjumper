@@ -2,14 +2,14 @@
 
 A small Raspberry Pi project that displays festive messages on a 20x4 I2C LCD and drives a NeoPixel strip. Messages can be submitted from a static S3-hosted web page (`index.html`) which posts to an API endpoint that places messages onto an SQS queue. The Pi polls SQS, displays incoming messages on the LCD, logs them to a `messages` file, and can be paired with NeoPixels for visual effects.
 
-![Jumpitecture Diagram](jumper-with-qr.png)
+![Jumpitecture Diagram](images/jumper-with-qr.png)
 
 **Contents**
 - `index.html` — static web UI to post messages (S3-hostable).
 - `cslm-christmas.py` — main Pi script: LCD display, SQS poller, message logging.
 - `neopixel1.py` — example NeoPixel control script (uses `board.D18`).
 - `messages` — runtime-generated log of received messages (created by the script).
-- `jumper-with-qr.png` — Jumpitecture diagram.
+- `images/jumper-with-qr.png` — Jumpitecture diagram.
 
 **Quick run**
 - Countdown display (local):
@@ -50,6 +50,15 @@ Recommended wiring notes
 - Put a 300-500Ω resistor in series with the NeoPixel data line to reduce ringing.
 - Place a 1000 µF electrolytic capacitor across the NeoPixel 5V and GND rails to stabilise power.
 - Use a level shifter (e.g. 74HCT245 or MOSFET-based) between the Pi (3.3V) data pin and NeoPixel data if your strip is 5V.
+
+## Jumper Build
+
+Here are the step-by-step build photos:
+
+![Jumper Build Step 1](images/jumper-build-01.jpg)
+![Jumper Build Step 2](images/jumper-build-02.jpg)
+![Jumper Build Step 3](images/jumper-build-03.jpg)
+![Jumper Build Step 4](images/jumper-build-04.jpg)
 
 Software architecture
 ---------------------
